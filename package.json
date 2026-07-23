@@ -1,0 +1,19 @@
+{
+  "name": "llm-eval-harness",
+  "version": "1.0.0",
+  "description": "A minimal eval harness for LLM model migrations: golden set with trap cases, LLM-as-judge, A/B on quality, latency and cost, with accuracy as a non-regression gate.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "eval": "tsx src/run.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}
