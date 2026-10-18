@@ -25,6 +25,7 @@ npm run mcp            # MCP server on stdio (run_golden_set, compare_models)
 - `src/gate.ts` `evaluateGate`, the gate as a pure function.
 - `src/mcp.ts` MCP stdio server, hand-rolled JSON-RPC, no SDK.
 - `test/` node:test suites; no other test framework.
+- `Dockerfile`, `server.json`, `.github/workflows/publish-mcp.yml` MCP Registry publishing (OCI image on GHCR, GitHub OIDC login).
 - `src/providers.ts` model refs (`provider:model`), Anthropic + Gemini REST calls, mock classifiers.
 - `src/judge.ts` label extraction, judge rubric prompt, mock judge (exact label match).
 - `src/pricing.ts` USD-per-MTok table for the cost column.
@@ -47,6 +48,14 @@ npm run mcp            # MCP server on stdio (run_golden_set, compare_models)
 - Short files with one job each. Report rendering never does math; run.ts never formats markdown beyond console output.
 - Comments only where the code cannot say it (for example the unsafe/safe ordering).
 - Verify by running `npm run eval`, `npm run typecheck` and `npm test` before declaring any change done.
+
+## MCP Registry release
+
+- A `v<version>` tag push builds and pushes `ghcr.io/razilzul/llm-eval-harness:<version>`, then runs `mcp-publisher publish`. Never publish from a laptop.
+- `package.json` version, `server.json` `version` and the tag in `server.json` `packages[0].identifier` must all equal the tag. The workflow fails otherwise. Bump all three in the release PR.
+- The `io.modelcontextprotocol.server.name` label in the Dockerfile must equal `name` in `server.json`.
+- The GHCR package must be public; the registry reads the image anonymously. The first publish creates it private, so make it public once in the package settings.
+- Keep keys out of the image: `.dockerignore` excludes `.env`.
 
 ## Workflow
 
