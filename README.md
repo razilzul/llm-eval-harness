@@ -4,7 +4,7 @@ A small, runnable eval harness for one job: swapping the LLM behind a product wi
 
 New models come out every few months. They are usually faster and cheaper. Sometimes they are also worse at your specific task, and you only find out from users. This repo is the pattern I use to find out before users do.
 
-This is the pattern behind HalalSnap's model migrations (2.5 Flash → 3.1 Flash, scan latency halved at equal accuracy).
+This is the pattern behind HalalSnap's model migrations: median scan latency fell about 35% (Gemini 2.5 Flash to 3.1 Flash-Lite, 17.9 s to 11.7 s) and then about 40% (3.1 Flash-Lite to 3.5 Flash-Lite, about 11.3 s to 6.9 s), each at equal or better judged quality.
 
 ## The pattern
 
@@ -56,7 +56,7 @@ Copy `.env.example` to `.env` and set a key. Keys stay in `.env`, which is gitig
 
 ```bash
 # Gemini vs Gemini
-npm run eval -- --baseline gemini:gemini-2.5-flash --candidate gemini:gemini-3.1-flash
+npm run eval -- --baseline gemini:gemini-2.5-flash --candidate gemini:gemini-3.1-flash-lite
 
 # Anthropic vs Anthropic, with an LLM judge
 npm run eval -- --baseline anthropic:claude-sonnet-5 --candidate anthropic:claude-haiku-4-5 --judge anthropic:claude-sonnet-5
