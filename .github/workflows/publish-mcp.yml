@@ -1,0 +1,145 @@
+name: publish-mcp
+
+# Pull requests: build the image and smoke-test it. Nothing is pushed.
+# Tag v*: push the image to GHCR, then publish server.json to the MCP Registry.
+# workflow_dispatch: re-run the publish for a version that already matches the repo files.
+on:
+  pull_request:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish, without the v prefix (must match package.json and server.json)"
+        required: true
+
+env:
+  IMAGE: ghcr.io/razilzul/llm-eval-harness
+  MCP_NAME: io.github.razilzul/llm-eval-harness
+  MCP_PUBLISHER_VERSION: v1.8.1
+
+jobs:
+  build:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - name: Check server.json against package.json and the Dockerfile
+        run: |
+          set -eu
+          v=$(jq -r .version package.json)
+          test "$(jq -r .name server.json)" = "$MCP_NAME"
+          test "$(jq -r .version server.json)" = "$v"
+          test "$(jq -r '.packages[0].identifier' server.json)" = "$IMAGE:$v"
+          grep -q "io.modelcontextprotocol.server.name=\"$MCP_NAME\"" Dockerfile
+      - name: Build image (not pushed)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: false
+          load: true
+          provenance: false
+          tags: llm-eval-harness:ci
+      - name: Check ownership label on the built image
+        run: |
+          label=$(docker image inspect llm-eval-harness:ci --format '{{ index .Config.Labels "io.modelcontextprotocol.server.name" }}')
+          echo "label: $label"
+          test "$label" = "$MCP_NAME"
+      - name: Smoke test the MCP server over stdio
+        run: |
+          set -eu
+          printf '%s\n' \
+            '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"0"}}}' \
+            '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+            '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
+            '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"compare_models","arguments":{"baseline":"mock:weak","candidate":"mock:strong"}}}' \
+            | docker run -i --rm llm-eval-harness:ci > out.jsonl
+          jq -e -s '
+            (map(select(.id == 1))[0].result.serverInfo.name == "llm-eval-harness")
+            and (map(select(.id == 2))[0].result.tools | map(.name) | sort == ["compare_models","run_golden_set"])
+            and (map(select(.id == 3))[0].result.isError | not)
+          ' out.jsonl
+
+  publish:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    concurrency: publish-mcp
+    permissions:
+      contents: read
+      packages: write # push the image to GHCR with GITHUB_TOKEN
+      id-token: write # mcp-publisher login github-oidc
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Work out the version and check the repo files agree with it
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -eu
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            VERSION="$INPUT_VERSION"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'
+          test "$(jq -r .version package.json)" = "$VERSION"
+          test "$(jq -r .version server.json)" = "$VERSION"
+          test "$(jq -r '.packages[0].identifier' server.json)" = "$IMAGE:$VERSION"
+          test "$(jq -r .name server.json)" = "$MCP_NAME"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          provenance: false
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ env.IMAGE }}:${{ env.VERSION }}
+
+      # The registry fetches the image anonymously. A package that GITHUB_TOKEN
+      # creates is private on first publish, so fail here with a clear message.
+      - name: Check the image is public
+        run: |
+          set -eu
+          repo="${IMAGE#ghcr.io/}"
+          token=$(curl -fsS "https://ghcr.io/token?scope=repository:$repo:pull" | jq -r .token) || {
+            echo "::error::$IMAGE is not anonymously readable. Make the package public once (GitHub > Packages > llm-eval-harness > Package settings > Change visibility), then re-run this job."
+            exit 1
+          }
+          curl -fsSI -H "Authorization: Bearer $token" \
+            -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json" \
+            "https://ghcr.io/v2/$repo/manifests/$VERSION" > /dev/null || {
+            echo "::error::$IMAGE:$VERSION cannot be read anonymously. Make the package public (see docs), then re-run this job."
+            exit 1
+          }
+
+      - name: Install mcp-publisher
+        run: |
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
+          ./mcp-publisher --help
+
+      - name: Authenticate to the MCP Registry (GitHub OIDC)
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish server.json to the MCP Registry
+        run: ./mcp-publisher publish

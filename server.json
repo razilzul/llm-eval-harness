@@ -1,0 +1,36 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.razilzul/llm-eval-harness",
+  "title": "LLM Eval Harness",
+  "description": "Run a golden set and gate LLM model swaps on accuracy, with latency and cost per request.",
+  "repository": {
+    "url": "https://github.com/razilzul/llm-eval-harness",
+    "source": "github"
+  },
+  "version": "1.0.0",
+  "packages": [
+    {
+      "registryType": "oci",
+      "identifier": "ghcr.io/razilzul/llm-eval-harness:1.0.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "ANTHROPIC_API_KEY",
+          "description": "Only needed to evaluate anthropic:* models. Not needed for mock models.",
+          "isRequired": false,
+          "isSecret": true,
+          "format": "string"
+        },
+        {
+          "name": "GEMINI_API_KEY",
+          "description": "Only needed to evaluate gemini:* models. Not needed for mock models.",
+          "isRequired": false,
+          "isSecret": true,
+          "format": "string"
+        }
+      ]
+    }
+  ]
+}

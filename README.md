@@ -90,6 +90,36 @@ On Windows use `C:\path\to\llm-eval-harness` in both. Then ask the agent: "use l
 
 Run the tests with `npm test`.
 
+### Install from the MCP Registry
+
+The server is listed in the official MCP Registry as `io.github.razilzul/llm-eval-harness`. The registry points at a Docker image on GHCR, so you need Docker and nothing else. No clone, no Node.
+
+```bash
+# Claude Code
+claude mcp add llm-eval -- docker run -i --rm ghcr.io/razilzul/llm-eval-harness:1.0.0
+```
+
+Or in a project `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "llm-eval": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "ghcr.io/razilzul/llm-eval-harness:1.0.0"]
+    }
+  }
+}
+```
+
+`mock:strong` and `mock:weak` need no key. To evaluate real models, pass the key through from your shell with `-e`. Docker copies the value from the client's environment, so the key never lands in the config file:
+
+```json
+"args": ["run", "-i", "--rm", "-e", "ANTHROPIC_API_KEY", "-e", "GEMINI_API_KEY", "ghcr.io/razilzul/llm-eval-harness:1.0.0"]
+```
+
+The image is built from the [Dockerfile](Dockerfile) in this repo and published by [.github/workflows/publish-mcp.yml](.github/workflows/publish-mcp.yml) when a `v*` tag is pushed. Pull requests only build it and run a stdio smoke test.
+
 ## What happens after the gate
 
 The eval gets a model to the door. Rollout gets it into production. That part is product-specific, so this repo only describes it:
@@ -109,6 +139,8 @@ src/eval.ts            A/B core: task prompt, runModel, golden-set and .env load
 src/gate.ts            the gate as a pure function
 src/mcp.ts             MCP server over stdio (hand-rolled JSON-RPC)
 test/                  node:test suites for the gate and the MCP protocol
+Dockerfile             image for the MCP server (stdio), published to GHCR
+server.json            MCP Registry metadata for that image
 src/providers.ts       Anthropic, Gemini and mock backends (plain fetch, no SDKs)
 src/judge.ts           label extraction, judge rubric, mock judge
 src/pricing.ts         per-model pricing for the cost column
