@@ -67,6 +67,29 @@ npm run eval -- --baseline gemini:gemini-2.5-flash --candidate anthropic:claude-
 
 Model refs are `provider:model`. Supported providers: `anthropic`, `gemini`, `mock`. Cost per request comes from the small pricing table in [src/pricing.ts](src/pricing.ts). Add your models there; unknown models still run and show cost as n/a.
 
+## Use it from a coding agent (MCP)
+
+The harness is also an MCP server over stdio, so Claude Code, Codex or any MCP client can check a model swap before it ships. Two tools:
+
+- `run_golden_set(model)`: accuracy overall and on traps, mean latency and cost per request, plus the failing cases.
+- `compare_models(baseline, candidate)`: both summaries and the gate verdict, with reasons when it fails.
+
+Both take an optional `judge` (default `mock:judge`). Real model refs (`anthropic:...`, `gemini:...`) bill your API key, so keep keys in the repo's `.env` (gitignored) or in the client's env config, never in a committed file. `mock:strong` and `mock:weak` need no key.
+
+Replace `/abs/path/to/llm-eval-harness` with your clone (run `npm install` there once).
+
+```bash
+# Claude Code
+claude mcp add llm-eval -- npx --prefix /abs/path/to/llm-eval-harness tsx /abs/path/to/llm-eval-harness/src/mcp.ts
+
+# Codex
+codex mcp add llm-eval -- npx --prefix /abs/path/to/llm-eval-harness tsx /abs/path/to/llm-eval-harness/src/mcp.ts
+```
+
+On Windows use `C:\path\to\llm-eval-harness` in both. Then ask the agent: "use llm-eval to compare mock:strong and mock:weak".
+
+Run the tests with `npm test`.
+
 ## What happens after the gate
 
 The eval gets a model to the door. Rollout gets it into production. That part is product-specific, so this repo only describes it:
@@ -81,7 +104,11 @@ The eval gets a model to the door. Rollout gets it into production. That part is
 
 ```
 data/golden-set.json   the golden set, traps included
-src/run.ts             CLI and the A/B gate
+src/run.ts             CLI: args, console output, exit code
+src/eval.ts            A/B core: task prompt, runModel, golden-set and .env loading
+src/gate.ts            the gate as a pure function
+src/mcp.ts             MCP server over stdio (hand-rolled JSON-RPC)
+test/                  node:test suites for the gate and the MCP protocol
 src/providers.ts       Anthropic, Gemini and mock backends (plain fetch, no SDKs)
 src/judge.ts           label extraction, judge rubric, mock judge
 src/pricing.ts         per-model pricing for the cost column
